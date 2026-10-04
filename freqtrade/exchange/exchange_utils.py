@@ -4,7 +4,7 @@ Exchange support utils
 
 import inspect
 from datetime import UTC, datetime, timedelta
-from math import ceil, floor, isnan
+from math import isnan
 from typing import Any
 
 import ccxt
@@ -291,7 +291,8 @@ def __price_to_precision_significant_digits(
         # string_to_precision is '' when we have zero precision
         below = sigfig * Decimal(string_to_precision if string_to_precision else "0")
         above = below + sigfig
-        res = above if rounding_mode == ROUND_UP else below
+        # A price already on the precision stays where it is.
+        res = above if rounding_mode == ROUND_UP and below < dec else below
         precise = f"{res:f}"
     else:
         precise = "{:f}".format(
@@ -350,12 +351,14 @@ def price_to_precision(
                 return round(float(str(res)), 14)
             return price
         elif precisionMode == DECIMAL_PLACES:
-            ndigits = round(price_precision)
-            ticks = price * (10**ndigits)
+            # Decimal, not float: 1.1 * 100 is 110.00000000000001, which ceil() takes to 1.11.
+            from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
+
+            step = Decimal(1).scaleb(-round(price_precision))
             if rounding_mode == ROUND_UP:
-                return ceil(ticks) / (10**ndigits)
+                return float(Decimal(str(price)).quantize(step, rounding=ROUND_CEILING))
             if rounding_mode == ROUND_DOWN:
-                return floor(ticks) / (10**ndigits)
+                return float(Decimal(str(price)).quantize(step, rounding=ROUND_FLOOR))
 
             raise ValueError(f"Unknown rounding_mode {rounding_mode}")
         elif precisionMode == SIGNIFICANT_DIGITS:
